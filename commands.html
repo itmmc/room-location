@@ -17,6 +17,11 @@ var CONFIG = {
   receptionPhone: "",
   receptionLabel: "Reception",
 
+  // ===== قاعدة الحد الأدنى للإشغال =====
+  // 0.5 = لازم الحضور 50% من سعة الغرفة على الأقل
+  // 0   = القاعدة معطّلة
+  minOccupancy: 0.5,
+
   // كل الغرف وتفاصيلها
   // enabled: true  = الإضافة تشتغل على هالغرفة
   // enabled: false = تتجاهلها
@@ -81,6 +86,14 @@ function buildBlock(organizerName, room) {
 }
 
 
+/* ---------- هل هذا العنوان غرفة؟ ---------- */
+
+function isRoomAddress(addr) {
+  if (!addr) { return false; }
+  return CONFIG.rooms.hasOwnProperty(String(addr).toLowerCase());
+}
+
+
 /* ---------- البحث عن غرفة في أي نص ---------- */
 
 function findRoom(haystack) {
@@ -108,10 +121,7 @@ function onAppointmentSendHandler(event) {
 
     var found = null;
 
-    // المصدر 1: المواقع المحسّنة
     var step2 = function () {
-
-      // المصدر 2: نص حقل الموقع
       if (!found && item.location && item.location.getAsync) {
         item.location.getAsync(function (locRes) {
           if (locRes.status === Office.AsyncResultStatus.Succeeded) {
@@ -125,8 +135,6 @@ function onAppointmentSendHandler(event) {
     };
 
     var step3 = function () {
-
-      // المصدر 3: قائمة المدعوين
       if (!found && item.requiredAttendees && item.requiredAttendees.getAsync) {
         item.requiredAttendees.getAsync(function (attRes) {
           if (attRes.status === Office.AsyncResultStatus.Succeeded) {
@@ -144,7 +152,7 @@ function onAppointmentSendHandler(event) {
 
     var finish = function () {
       if (!found) { event.completed({ allowEvent: true }); return; }
-      appendBlock(item, event, found);
+      checkOccupancy(item, event, found);
     };
 
     if (item.enhancedLocation && item.enhancedLocation.getAsync) {
@@ -164,6 +172,46 @@ function onAppointmentSendHandler(event) {
   } catch (e) {
     event.completed({ allowEvent: true });
   }
+}
+
+
+/* ---------- فحص الحد الأدنى للإشغال ---------- */
+
+function checkOccupancy(item, event, room) {
+
+  var ratio = CONFIG.minOccupancy;
+
+  if (!ratio || ratio <= 0 || !room.seats) {
+    appendBlock(item, event, room);
+    return;
+  }
+
+  var needed = Math.ceil(room.seats * ratio);
+
+  item.requiredAttendees.getAsync(function (reqRes) {
+    item.optionalAttendees.getAsync(function (optRes) {
+
+      var people = 1; // المنظّم
+      var all = (reqRes.value || []).concat(optRes.value || []);
+
+      for (var i = 0; i < all.length; i++) {
+        if (!isRoomAddress(all[i].emailAddress)) { people++; }
+      }
+
+      if (people < needed) {
+        event.completed({
+          allowEvent: false,
+          errorMessage:
+            room.name + " seats " + room.seats + " people and requires at least " +
+            needed + " attendees (" + Math.round(ratio * 100) + "% of capacity). " +
+            "This meeting has " + people + ". Please pick a smaller room or invite more people."
+        });
+        return;
+      }
+
+      appendBlock(item, event, room);
+    });
+  });
 }
 
 
