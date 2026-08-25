@@ -21,12 +21,12 @@ var CONFIG = {
   receptionLabel: "Reception",
 
   // الغرف المفعّلة. القائمة الفاضية [] تعني كل الغرف.
-  onlyRooms: [],
+  onlyRooms: ["intelligence@modernmills.com.sa"],
 
   // ===== وضع التشخيص =====
   // true  = ينزل البلوك في كل اجتماع حتى بدون غرفة (للاختبار فقط)
   // false = السلوك الطبيعي، غرف فقط
-  debugAlways: true
+  debugAlways: false
 };
 
 /* ================================================== */
