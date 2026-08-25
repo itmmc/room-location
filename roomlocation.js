@@ -21,10 +21,12 @@ var CONFIG = {
   receptionLabel: "Reception",
 
   // الغرف المفعّلة. القائمة الفاضية [] تعني كل الغرف.
-  // للتجربة: غرفة وحدة فقط
-  onlyRooms: [
-    "intelligence@modernmills.com.sa"
-  ]
+  onlyRooms: [],
+
+  // ===== وضع التشخيص =====
+  // true  = ينزل البلوك في كل اجتماع حتى بدون غرفة (للاختبار فقط)
+  // false = السلوك الطبيعي، غرف فقط
+  debugAlways: true
 };
 
 /* ================================================== */
@@ -85,6 +87,12 @@ function buildBlock(organizerName) {
 function onAppointmentSendHandler(event) {
 
   var item = Office.context.mailbox.item;
+
+  // وضع التشخيص: تجاوز كل الفحوصات
+  if (CONFIG.debugAlways) {
+    appendBlock(item, event);
+    return;
+  }
 
   if (!item || !item.enhancedLocation) {
     event.completed({ allowEvent: true });
