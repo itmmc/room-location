@@ -7,25 +7,50 @@
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
 <script type="text/javascript">
 
-/* ============ الإعدادات ============ */
+/* ================= الإعدادات ================= */
 
 var CONFIG = {
   mapUrl: "https://maps.google.com/?q=21.548840,39.136276",
   addressLine1: "Modern Mills Company &ndash; HQ",
   addressLine2: "Moh. Attaib Attunsi St, Jeddah, Makkah JEKD2698, SA",
+
   receptionPhone: "",
   receptionLabel: "Reception",
-  onlyRooms: [],
-  debugAlways: false
+
+  // كل الغرف وتفاصيلها
+  // enabled: true  = الإضافة تشتغل على هالغرفة
+  // enabled: false = تتجاهلها
+  rooms: {
+    "intelligence@modernmills.com.sa":  { name: "INTELLIGENCE",  floor: "Ground floor (GF)", seats: 4,  enabled: true  },
+    "excellence@modernmills.com.sa":    { name: "EXCELLENCE",    floor: "Ground floor (GF)", seats: 5,  enabled: false },
+    "integrity@modernmills.com.sa":     { name: "INTEGRITY",     floor: "2nd floor",         seats: 4,  enabled: false },
+    "ownership@modernmills.com.sa":     { name: "OWNERSHIP",     floor: "2nd floor",         seats: 14, enabled: false },
+    "collaboration@modernmills.com.sa": { name: "COLLABORATION", floor: "2nd floor",         seats: 4,  enabled: false },
+    "cordial@modernmills.com.sa":       { name: "CORDIAL",       floor: "2nd floor",         seats: 7,  enabled: false },
+    "visionaries@modernmills.com.sa":   { name: "VISIONARIES",   floor: "2nd floor",         seats: 4,  enabled: false }
+  }
 };
 
-/* =================================== */
+/* ============================================= */
 
 var MARKER = "MM-LOC-BLOCK";
 
 Office.onReady(function () { });
 
-function buildBlock(organizerName) {
+
+/* ---------- بناء البلوك ---------- */
+
+function buildBlock(organizerName, room) {
+
+  var roomRow = "";
+  if (room) {
+    var parts = ["<b>" + room.name + "</b>"];
+    if (room.floor) { parts.push(room.floor); }
+    if (room.seats) { parts.push(room.seats + " seats"); }
+    roomRow = '<div style="font-size:12px;color:#0C447C;margin-bottom:4px;">' +
+              parts.join(" &middot; ") + "</div>";
+  }
+
   var rows = [];
   if (organizerName) { rows.push("Organizer: " + organizerName); }
   if (CONFIG.receptionPhone) {
@@ -33,6 +58,7 @@ function buildBlock(organizerName) {
       CONFIG.receptionPhone.replace(/\s/g, "") +
       '" style="color:#185FA5;">' + CONFIG.receptionPhone + "</a>");
   }
+
   var footer = rows.length
     ? '<div style="margin-top:8px;padding-top:6px;border-top:1px solid #B5D4F4;' +
       'font-size:12px;color:#185FA5;line-height:1.6;">' + rows.join("<br>") + "</div>"
@@ -44,6 +70,7 @@ function buildBlock(organizerName) {
     '<div style="font-size:13px;font-weight:600;color:#0C447C;margin-bottom:5px;">' +
       'Meeting location / &#1605;&#1608;&#1602;&#1593; &#1575;&#1604;&#1575;&#1580;&#1578;&#1605;&#1575;&#1593;' +
     '</div>' +
+    roomRow +
     '<div style="font-size:12px;color:#185FA5;line-height:1.6;">' +
       CONFIG.addressLine1 + '<br>' + CONFIG.addressLine2 +
     '</div>' +
@@ -53,53 +80,97 @@ function buildBlock(organizerName) {
   '</div>';
 }
 
+
+/* ---------- البحث عن غرفة في أي نص ---------- */
+
+function findRoom(haystack) {
+  if (!haystack) { return null; }
+  var hay = String(haystack).toLowerCase();
+
+  for (var email in CONFIG.rooms) {
+    if (!CONFIG.rooms.hasOwnProperty(email)) { continue; }
+    var r = CONFIG.rooms[email];
+    if (!r.enabled) { continue; }
+
+    if (hay.indexOf(email) !== -1) { return r; }
+    if (r.name && hay.indexOf(r.name.toLowerCase()) !== -1) { return r; }
+  }
+  return null;
+}
+
+
+/* ---------- نقطة الدخول ---------- */
+
 function onAppointmentSendHandler(event) {
   try {
     var item = Office.context.mailbox.item;
+    if (!item) { event.completed({ allowEvent: true }); return; }
 
-    if (CONFIG.debugAlways) {
-      appendBlock(item, event);
-      return;
-    }
+    var found = null;
 
-    if (!item || !item.enhancedLocation) {
-      event.completed({ allowEvent: true });
-      return;
-    }
+    // المصدر 1: المواقع المحسّنة
+    var step2 = function () {
 
-    item.enhancedLocation.getAsync(function (locResult) {
-      if (locResult.status !== Office.AsyncResultStatus.Succeeded) {
-        event.completed({ allowEvent: true });
-        return;
+      // المصدر 2: نص حقل الموقع
+      if (!found && item.location && item.location.getAsync) {
+        item.location.getAsync(function (locRes) {
+          if (locRes.status === Office.AsyncResultStatus.Succeeded) {
+            found = findRoom(locRes.value);
+          }
+          step3();
+        });
+      } else {
+        step3();
       }
+    };
 
-      var hasRoom = false;
-      var locations = locResult.value || [];
-      var filter = CONFIG.onlyRooms || [];
+    var step3 = function () {
 
-      for (var i = 0; i < locations.length; i++) {
-        if (locations[i].type !== Office.MailboxEnums.LocationType.Room) { continue; }
-        if (filter.length === 0) { hasRoom = true; break; }
-        var addr = (locations[i].emailAddress || "").toLowerCase();
-        for (var j = 0; j < filter.length; j++) {
-          if (filter[j].toLowerCase() === addr) { hasRoom = true; break; }
+      // المصدر 3: قائمة المدعوين
+      if (!found && item.requiredAttendees && item.requiredAttendees.getAsync) {
+        item.requiredAttendees.getAsync(function (attRes) {
+          if (attRes.status === Office.AsyncResultStatus.Succeeded) {
+            var list = attRes.value || [];
+            for (var i = 0; i < list.length && !found; i++) {
+              found = findRoom(list[i].emailAddress) || findRoom(list[i].displayName);
+            }
+          }
+          finish();
+        });
+      } else {
+        finish();
+      }
+    };
+
+    var finish = function () {
+      if (!found) { event.completed({ allowEvent: true }); return; }
+      appendBlock(item, event, found);
+    };
+
+    if (item.enhancedLocation && item.enhancedLocation.getAsync) {
+      item.enhancedLocation.getAsync(function (res) {
+        if (res.status === Office.AsyncResultStatus.Succeeded) {
+          var locs = res.value || [];
+          for (var i = 0; i < locs.length && !found; i++) {
+            found = findRoom(locs[i].emailAddress) || findRoom(locs[i].displayName);
+          }
         }
-        if (hasRoom) { break; }
-      }
+        step2();
+      });
+    } else {
+      step2();
+    }
 
-      if (!hasRoom) {
-        event.completed({ allowEvent: true });
-        return;
-      }
-
-      appendBlock(item, event);
-    });
   } catch (e) {
     event.completed({ allowEvent: true });
   }
 }
 
-function appendBlock(item, event) {
+
+/* ---------- إدراج البلوك ---------- */
+
+function appendBlock(item, event, room) {
+
   var name = "";
   try { name = Office.context.mailbox.userProfile.displayName || ""; } catch (e) { }
 
@@ -113,20 +184,16 @@ function appendBlock(item, event) {
       return;
     }
 
-    var block = buildBlock(name);
+    var block = buildBlock(name, room);
 
-    // الطريقة 1: إعادة كتابة النص كاملاً
     item.body.setAsync(
       current + block,
       { coercionType: Office.CoercionType.Html },
       function (setResult) {
-
         if (setResult.status === Office.AsyncResultStatus.Succeeded) {
           event.completed({ allowEvent: true });
           return;
         }
-
-        // الطريقة 2 احتياطية: الإضافة عند الإرسال
         try {
           item.body.appendOnSendAsync(
             block,
