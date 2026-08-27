@@ -202,9 +202,10 @@ function checkOccupancy(item, event, room) {
         event.completed({
           allowEvent: false,
           errorMessage:
-            room.name + " seats " + room.seats + " people and requires at least " +
-            needed + " attendees (" + Math.round(ratio * 100) + "% of capacity). " +
-            "This meeting has " + people + ". Please pick a smaller room or invite more people."
+            room.name + " seats " + room.seats + " people. This meeting has only " +
+            people + " attendee(s), below the recommended minimum of " + needed +
+            " (" + Math.round(ratio * 100) + "% of capacity). " +
+            "Consider a smaller room. You can still send this invitation."
         });
         return;
       }
