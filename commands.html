@@ -199,14 +199,23 @@ function checkOccupancy(item, event, room) {
       }
 
       if (people < needed) {
-        event.completed({
-          allowEvent: false,
-          errorMessage:
-            room.name + " seats " + room.seats + " people. This meeting has only " +
-            people + " attendee(s), below the recommended minimum of " + needed +
-            " (" + Math.round(ratio * 100) + "% of capacity). " +
-            "Consider a smaller room. You can still send this invitation."
-        });
+
+        var msg =
+          room.name + " seats " + room.seats + " people. This meeting has only " +
+          people + " attendee(s), below the recommended minimum of " + needed +
+          " (" + Math.round(ratio * 100) + "% of capacity). " +
+          "Consider a smaller room. You can still send this invitation.";
+
+        // تنبيه قابل للتجاوز - يتجاوز إعداد المانيفست إن كان العميل يدعمه
+        try {
+          event.completed({
+            allowEvent: false,
+            errorMessage: msg,
+            sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser
+          });
+        } catch (e) {
+          event.completed({ allowEvent: false, errorMessage: msg });
+        }
         return;
       }
 
