@@ -26,12 +26,12 @@ var CONFIG = {
   // enabled: true  = الإضافة تشتغل على هالغرفة
   // enabled: false = تتجاهلها
   rooms: {
-    "intelligence@modernmills.com.sa":  { name: "INTELLIGENCE",  floor: "Ground floor (GF)", seats: 4,  enabled: true  },
-    "excellence@modernmills.com.sa":    { name: "EXCELLENCE",    floor: "Ground floor (GF)", seats: 4,  enabled: true },
-    "integrity@modernmills.com.sa":     { name: "INTEGRITY",     floor: "Ground floor (GF)", seats: 5,  enabled: true },
-    "ownership@modernmills.com.sa":     { name: "OWNERSHIP",     floor: "2nd floor",         seats: 14, enabled: true },
-    "collaboration@modernmills.com.sa": { name: "COLLABORATE", floor: "2nd floor",         seats: 7,  enabled: true },
-    "cordial@modernmills.com.sa":       { name: "MOTIVATION",    floor: "2nd floor",         seats: 4,  enabled: true }
+    "intelligence@modernmills.com.sa":  { name: "INTELLIGENCE", floor: "Ground floor (GF)", seats: 4,  enabled: true },
+    "excellence@modernmills.com.sa":    { name: "EXCELLENCE",   floor: "Ground floor (GF)", seats: 4,  enabled: true },
+    "integrity@modernmills.com.sa":     { name: "INTEGRITY",    floor: "Ground floor (GF)", seats: 5,  enabled: true },
+    "ownership@modernmills.com.sa":     { name: "OWNERSHIP",    floor: "2nd floor",         seats: 14, enabled: true },
+    "collaboration@modernmills.com.sa": { name: "COLLABORATE",  floor: "2nd floor",         seats: 7,  enabled: true },
+    "cordial@modernmills.com.sa":       { name: "MOTIVATION",   floor: "2nd floor",         seats: 4,  enabled: true }
   }
 };
 
@@ -205,16 +205,19 @@ function checkOccupancy(item, event, room) {
           " (" + Math.round(ratio * 100) + "% of capacity). " +
           "Consider a smaller room. You can still send this invitation.";
 
-        // تنبيه قابل للتجاوز - يتجاوز إعداد المانيفست إن كان العميل يدعمه
-        try {
-          event.completed({
-            allowEvent: false,
-            errorMessage: msg,
-            sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser
-          });
-        } catch (e) {
-          event.completed({ allowEvent: false, errorMessage: msg });
-        }
+        // نكتب البلوك أولاً، ثم نعرض التنبيه
+        // لأن "Send anyway" يرسل مباشرة بدون إعادة تشغيل الإضافة
+        appendBlock(item, event, room, function () {
+          try {
+            event.completed({
+              allowEvent: false,
+              errorMessage: msg,
+              sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser
+            });
+          } catch (e) {
+            event.completed({ allowEvent: false, errorMessage: msg });
+          }
+        });
         return;
       }
 
@@ -226,7 +229,10 @@ function checkOccupancy(item, event, room) {
 
 /* ---------- إدراج البلوك ---------- */
 
-function appendBlock(item, event, room) {
+function appendBlock(item, event, room, onDone) {
+
+  // إن لم تُمرَّر دالة، السلوك الافتراضي: اسمح بالإرسال
+  var done = onDone || function () { event.completed({ allowEvent: true }); };
 
   var name = "";
   try { name = Office.context.mailbox.userProfile.displayName || ""; } catch (e) { }
@@ -237,7 +243,7 @@ function appendBlock(item, event, room) {
                    bodyResult.value) ? bodyResult.value : "";
 
     if (current.indexOf(MARKER) !== -1) {
-      event.completed({ allowEvent: true });
+      done();
       return;
     }
 
@@ -248,17 +254,17 @@ function appendBlock(item, event, room) {
       { coercionType: Office.CoercionType.Html },
       function (setResult) {
         if (setResult.status === Office.AsyncResultStatus.Succeeded) {
-          event.completed({ allowEvent: true });
+          done();
           return;
         }
         try {
           item.body.appendOnSendAsync(
             block,
             { coercionType: Office.CoercionType.Html },
-            function () { event.completed({ allowEvent: true }); }
+            function () { done(); }
           );
         } catch (e) {
-          event.completed({ allowEvent: true });
+          done();
         }
       }
     );
